@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  chat-service:
+    build: ./chat-service
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - MONGO_URI=mongodb://mongo:27017/chat-app
+      - AI_SERVICE_URL=http://ai-service:8000
+      - JWT_SECRET=supersecretkey
+    depends_on:
+      - mongo
+      - ai-service
+    networks:
+      - app-network
+
+  ai-service:
+    build: ./ai-service
+    ports:
+      - "8000:8000"
+    networks:
+      - app-network
+
+  mongo:
+    image: mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  mongo-data:
