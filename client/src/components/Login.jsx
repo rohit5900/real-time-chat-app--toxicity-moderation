@@ -3,26 +3,27 @@ import styled from 'styled-components';
 import axios from 'axios';
 
 const LoginCard = styled.div`
-  background: rgba(255, 255, 255, 0.1);
+  background: ${props => props.theme.cardBg};
   backdrop-filter: blur(10px);
   padding: 2rem;
   border-radius: 20px;
   box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
-  border: 1px solid rgba(255, 255, 255, 0.18);
+  border: 1px solid ${props => props.theme.cardBorder};
   width: 400px;
   text-align: center;
+  color: ${props => props.theme.text};
 `;
 
 const Title = styled.h2`
   margin-bottom: 1.5rem;
   font-weight: 600;
-  color: #fff;
+  color: ${props => props.theme.text};
 `;
 
 const TabContainer = styled.div`
   display: flex;
   margin-bottom: 1.5rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+  border-bottom: 1px solid ${props => props.theme.cardBorder};
 `;
 
 const Tab = styled.button`
@@ -30,14 +31,16 @@ const Tab = styled.button`
   padding: 10px;
   background: none;
   border: none;
-  color: ${props => props.$active ? '#4ecca3' : 'rgba(255, 255, 255, 0.6)'};
-  border-bottom: 2px solid ${props => props.$active ? '#4ecca3' : 'transparent'};
+  color: ${props => props.$active ? props.theme.accent : props.theme.text};
+  border-bottom: 2px solid ${props => props.$active ? props.theme.accent : 'transparent'};
   cursor: pointer;
   font-weight: bold;
   transition: 0.3s;
+  opacity: ${props => props.$active ? 1 : 0.6};
 
   &:hover {
-    color: #4ecca3;
+    color: ${props => props.theme.accent};
+    opacity: 1;
   }
 `;
 
@@ -47,17 +50,18 @@ const Input = styled.input`
   margin-bottom: 1rem;
   border-radius: 10px;
   border: none;
-  background: rgba(255, 255, 255, 0.2);
-  color: #fff;
+  background: ${props => props.theme.inputBg};
+  color: ${props => props.theme.text};
   font-size: 1rem;
   outline: none;
 
   &::placeholder {
-    color: rgba(255, 255, 255, 0.6);
+    color: ${props => props.theme.text};
+    opacity: 0.6;
   }
 
   &:focus {
-    background: rgba(255, 255, 255, 0.3);
+    background: ${props => props.theme.cardBorder};
   }
 `;
 

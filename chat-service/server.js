@@ -6,6 +6,7 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const axios = require('axios');
 const authRoutes = require('./routes/auth');
+const Message = require('./models/Message');
 
 const app = express();
 const server = http.createServer(app);
@@ -54,7 +55,11 @@ io.on('connection', (socket) => {
   // Send available channels
   socket.emit('channel_list', channels);
 
-  socket.on('join_room', ({ roomId, username }) => {
+const Message = require('./models/Message'); // Ensure Message model is imported
+
+// ... inside io.on('connection') ...
+
+  socket.on('join_room', async ({ roomId, username }) => {
     // Leave previous rooms (optional, depending on UX)
     // socket.rooms.forEach(room => { if(room !== socket.id) socket.leave(room); });
 
@@ -64,10 +69,17 @@ io.on('connection', (socket) => {
 
     console.log(`User ${username} (${socket.id}) joined room ${roomId}`);
 
-    // Send history if in-memory
+    // Send history
     if (useInMemory) {
       const roomMessages = messages.filter(m => m.roomId === roomId);
       roomMessages.forEach(m => socket.emit('new_message', m));
+    } else {
+      try {
+        const roomMessages = await Message.find({ roomId }).sort({ createdAt: 1 }).limit(50);
+        roomMessages.forEach(m => socket.emit('new_message', m));
+      } catch (err) {
+        console.error("Error fetching history:", err);
+      }
     }
 
     // Broadcast room info (user count)
@@ -81,6 +93,36 @@ io.on('connection', (socket) => {
     if (!channels.includes(channelName)) {
       channels.push(channelName);
       io.emit('channel_list', channels); // Broadcast to everyone
+    }
+  });
+
+  socket.on('delete_channel', async (channelName) => {
+    const defaultChannels = ['General', 'Random', 'Tech'];
+    if (defaultChannels.includes(channelName)) {
+      return; // Cannot delete default channels
+    }
+
+    const index = channels.indexOf(channelName);
+    if (index !== -1) {
+      channels.splice(index, 1);
+      
+      // Delete messages for this channel
+      if (useInMemory) {
+        for (let i = messages.length - 1; i >= 0; i--) {
+          if (messages[i].roomId === channelName) {
+            messages.splice(i, 1);
+          }
+        }
+      } else {
+        try {
+          await Message.deleteMany({ roomId: channelName });
+        } catch (err) {
+          console.error("Error deleting channel messages:", err);
+        }
+      }
+
+      io.emit('channel_list', channels); // Broadcast updated list
+      io.emit('channel_deleted', channelName); // Notify users to leave
     }
   });
 
@@ -115,6 +157,13 @@ io.on('connection', (socket) => {
 
       if (useInMemory) {
         messages.push(messageData);
+      } else {
+        try {
+          const newMessage = new Message(messageData);
+          await newMessage.save();
+        } catch (err) {
+          console.error("Error saving message:", err);
+        }
       }
 
       if (finalStatus !== 'blocked') {
@@ -131,6 +180,51 @@ io.on('connection', (socket) => {
       messageData.status = 'allowed';
       if (useInMemory) messages.push(messageData);
       io.to(data.roomId).emit('new_message', messageData);
+    }
+  });
+
+  socket.on('delete_message', async (messageId) => {
+    console.log(`Deleting message: ${messageId}`);
+    
+    if (useInMemory) {
+      const index = messages.findIndex(m => m._id.toString() === messageId);
+      if (index !== -1) {
+        const roomId = messages[index].roomId;
+        messages.splice(index, 1);
+        io.to(roomId).emit('message_deleted', messageId);
+      }
+    } else {
+      try {
+        const msg = await Message.findById(messageId);
+        if (msg) {
+          await Message.findByIdAndDelete(messageId);
+          io.to(msg.roomId).emit('message_deleted', messageId);
+        }
+      } catch (err) {
+        console.error("Error deleting message:", err);
+      }
+    }
+  });
+
+  socket.on('clear_history', async (roomId) => {
+    console.log(`Clearing history for room: ${roomId}`);
+    
+    if (useInMemory) {
+      // Remove all messages with matching roomId
+      // We iterate backwards to safely splice
+      for (let i = messages.length - 1; i >= 0; i--) {
+        if (messages[i].roomId === roomId) {
+          messages.splice(i, 1);
+        }
+      }
+      io.to(roomId).emit('history_cleared');
+    } else {
+      try {
+        await Message.deleteMany({ roomId });
+        io.to(roomId).emit('history_cleared');
+      } catch (err) {
+        console.error("Error clearing history:", err);
+      }
     }
   });
 
