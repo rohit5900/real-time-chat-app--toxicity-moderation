@@ -5,6 +5,7 @@ const { Server } = require('socket.io');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const axios = require('axios');
+const authRoutes = require('./routes/auth');
 
 const app = express();
 const server = http.createServer(app);
@@ -18,9 +19,13 @@ const io = new Server(server, {
 app.use(cors());
 app.use(express.json());
 
+// Routes
+app.use('/api/auth', authRoutes);
+
 // Connect to MongoDB
 let useInMemory = false;
 const messages = []; // In-memory store
+const channels = ['General', 'Random', 'Tech']; // Default channels
 
 mongoose.connect(process.env.MONGO_URI, {
   useNewUrlParser: true,
@@ -33,51 +38,74 @@ mongoose.connect(process.env.MONGO_URI, {
   useInMemory = true;
 });
 
-// Basic Route
 app.get('/', (req, res) => {
   res.send('Chat Service is running');
 });
 
-// Socket.io Logic
+// Track users in rooms
+const getUsersInRoom = (roomId) => {
+  const room = io.sockets.adapter.rooms.get(roomId);
+  return room ? room.size : 0;
+};
+
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
 
-  socket.on('join_room', (roomId) => {
+  // Send available channels
+  socket.emit('channel_list', channels);
+
+  socket.on('join_room', ({ roomId, username }) => {
+    // Leave previous rooms (optional, depending on UX)
+    // socket.rooms.forEach(room => { if(room !== socket.id) socket.leave(room); });
+
     socket.join(roomId);
-    console.log(`User ${socket.id} joined room ${roomId}`);
+    socket.username = username; // Store username in socket session
+    socket.currentRoom = roomId;
+
+    console.log(`User ${username} (${socket.id}) joined room ${roomId}`);
+
     // Send history if in-memory
     if (useInMemory) {
       const roomMessages = messages.filter(m => m.roomId === roomId);
       roomMessages.forEach(m => socket.emit('new_message', m));
     }
+
+    // Broadcast room info (user count)
+    io.to(roomId).emit('room_data', {
+      room: roomId,
+      users: getUsersInRoom(roomId)
+    });
+  });
+
+  socket.on('create_channel', (channelName) => {
+    if (!channels.includes(channelName)) {
+      channels.push(channelName);
+      io.emit('channel_list', channels); // Broadcast to everyone
+    }
   });
 
   socket.on('send_message', async (data) => {
-    // data: { roomId, text, senderId, clientTempId }
     console.log('Received message:', data);
 
     const messageData = {
       ...data,
       status: 'pending',
-      _id: new mongoose.Types.ObjectId(), // Temporary ID
+      _id: new mongoose.Types.ObjectId(),
       createdAt: new Date()
     };
 
-    // Emit pending status back to sender
     socket.emit('message_pending', {
       clientTempId: data.clientTempId,
       serverId: messageData._id
     });
 
-    // 2. Send to AI Service
     try {
       const aiResponse = await axios.post(`${process.env.AI_SERVICE_URL}/moderate`, {
         text: data.text
       });
 
-      const moderationResult = aiResponse.data; // { action: 'allow'|'flag'|'block', ... }
+      const moderationResult = aiResponse.data;
       
-      // 3. Update Status based on AI response
       let finalStatus = 'allowed';
       if (moderationResult.action === 'flag') finalStatus = 'flagged';
       if (moderationResult.action === 'block') finalStatus = 'blocked';
@@ -85,16 +113,10 @@ io.on('connection', (socket) => {
       messageData.status = finalStatus;
       messageData.moderation = moderationResult;
 
-      // Save to DB or In-Memory
       if (useInMemory) {
         messages.push(messageData);
-      } else {
-        // TODO: Implement Message Model and save to DB
-        // const newMessage = new Message(messageData);
-        // await newMessage.save();
       }
 
-      // 4. Broadcast result
       if (finalStatus !== 'blocked') {
         io.to(data.roomId).emit('new_message', messageData);
       } else {
@@ -106,9 +128,7 @@ io.on('connection', (socket) => {
 
     } catch (error) {
       console.error('AI Service Error:', error.message);
-      // Fallback: Allow or Block? Let's flag it if AI fails? Or allow?
-      // For now, let's allow but log error
-      messageData.status = 'allowed'; // Default if AI fails
+      messageData.status = 'allowed';
       if (useInMemory) messages.push(messageData);
       io.to(data.roomId).emit('new_message', messageData);
     }
@@ -116,6 +136,12 @@ io.on('connection', (socket) => {
 
   socket.on('disconnect', () => {
     console.log('User disconnected:', socket.id);
+    if (socket.currentRoom) {
+      io.to(socket.currentRoom).emit('room_data', {
+        room: socket.currentRoom,
+        users: getUsersInRoom(socket.currentRoom)
+      });
+    }
   });
 });
 
