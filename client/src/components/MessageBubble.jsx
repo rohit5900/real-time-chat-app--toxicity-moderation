@@ -4,24 +4,24 @@ import styled from 'styled-components';
 const BubbleContainer = styled.div`
   display: flex;
   flex-direction: column;
-  align-items: ${props => props.isOwn ? 'flex-end' : 'flex-start'};
+  align-items: ${props => props.$isOwn ? 'flex-end' : 'flex-start'};
   margin-bottom: 1rem;
   max-width: 70%;
-  align-self: ${props => props.isOwn ? 'flex-end' : 'flex-start'};
+  align-self: ${props => props.$isOwn ? 'flex-end' : 'flex-start'};
 `;
 
 const Bubble = styled.div`
   padding: 10px 15px;
   border-radius: 15px;
   background: ${props => {
-    if (props.status === 'blocked') return '#ff4757';
-    if (props.status === 'flagged') return '#ffa502';
-    if (props.isOwn) return '#4ecca3';
+    if (props.$status === 'blocked') return '#ff4757';
+    if (props.$status === 'flagged') return '#ffa502';
+    if (props.$isOwn) return '#4ecca3';
     return 'rgba(255, 255, 255, 0.15)';
   }};
-  color: ${props => props.isOwn ? '#1a1a2e' : '#fff'};
-  border-bottom-right-radius: ${props => props.isOwn ? '2px' : '15px'};
-  border-bottom-left-radius: ${props => props.isOwn ? '15px' : '2px'};
+  color: ${props => props.$isOwn ? '#1a1a2e' : '#fff'};
+  border-bottom-right-radius: ${props => props.$isOwn ? '2px' : '15px'};
+  border-bottom-left-radius: ${props => props.$isOwn ? '15px' : '2px'};
   position: relative;
   min-width: 80px;
 `;
@@ -55,9 +55,9 @@ export default function MessageBubble({ message, isOwn }) {
   const { text, senderId, status, moderation } = message;
 
   return (
-    <BubbleContainer isOwn={isOwn}>
+    <BubbleContainer $isOwn={isOwn}>
       {!isOwn && <SenderName>{senderId}</SenderName>}
-      <Bubble isOwn={isOwn} status={status}>
+      <Bubble $isOwn={isOwn} $status={status}>
         {status === 'blocked' ? (
           <i>Message blocked (Toxic)</i>
         ) : (
