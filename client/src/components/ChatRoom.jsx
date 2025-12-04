@@ -3,16 +3,70 @@ import styled from 'styled-components';
 import { socket } from '../socket';
 import MessageBubble from './MessageBubble';
 
-const ChatContainer = styled.div`
-  width: 900px;
+const Layout = styled.div`
+  display: flex;
+  width: 1000px;
   height: 600px;
   background: rgba(255, 255, 255, 0.05);
   backdrop-filter: blur(10px);
   border-radius: 20px;
   border: 1px solid rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+`;
+
+const Sidebar = styled.div`
+  width: 250px;
+  background: rgba(0, 0, 0, 0.3);
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+`;
+
+const SidebarHeader = styled.div`
+  padding: 1.5rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  h3 { margin: 0; color: #fff; }
+`;
+
+const ChannelList = styled.div`
+  flex: 1;
+  overflow-y: auto;
+  padding: 1rem;
+`;
+
+const ChannelItem = styled.div`
+  padding: 10px;
+  margin-bottom: 5px;
+  border-radius: 8px;
+  cursor: pointer;
+  background: ${props => props.$active ? 'rgba(78, 204, 163, 0.2)' : 'transparent'};
+  color: ${props => props.$active ? '#4ecca3' : 'rgba(255, 255, 255, 0.7)'};
+  transition: 0.2s;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: #fff;
+  }
+`;
+
+const CreateChannelBtn = styled.button`
+  margin: 1rem;
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px dashed rgba(255, 255, 255, 0.3);
+  color: rgba(255, 255, 255, 0.7);
+  border-radius: 8px;
+  cursor: pointer;
+  &:hover {
+    background: rgba(255, 255, 255, 0.2);
+    color: #fff;
+  }
+`;
+
+const ChatArea = styled.div`
+  flex: 1;
+  display: flex;
+  flex-direction: column;
 `;
 
 const Header = styled.div`
@@ -24,9 +78,19 @@ const Header = styled.div`
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 `;
 
-const RoomInfo = styled.h3`
-  margin: 0;
-  color: #fff;
+const RoomInfo = styled.div`
+  h3 { margin: 0; color: #fff; }
+  span { font-size: 0.8rem; color: rgba(255, 255, 255, 0.5); }
+`;
+
+const LogoutBtn = styled.button`
+  background: rgba(255, 71, 87, 0.2);
+  color: #ff4757;
+  border: 1px solid rgba(255, 71, 87, 0.3);
+  padding: 5px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  &:hover { background: rgba(255, 71, 87, 0.3); }
 `;
 
 const MessagesArea = styled.div`
@@ -37,13 +101,8 @@ const MessagesArea = styled.div`
   flex-direction: column;
   gap: 10px;
 
-  &::-webkit-scrollbar {
-    width: 6px;
-  }
-  &::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 3px;
-  }
+  &::-webkit-scrollbar { width: 6px; }
+  &::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 3px; }
 `;
 
 const InputArea = styled.form`
@@ -61,10 +120,7 @@ const MessageInput = styled.input`
   background: rgba(255, 255, 255, 0.1);
   color: #fff;
   outline: none;
-
-  &:focus {
-    background: rgba(255, 255, 255, 0.2);
-  }
+  &:focus { background: rgba(255, 255, 255, 0.2); }
 `;
 
 const SendButton = styled.button`
@@ -76,48 +132,76 @@ const SendButton = styled.button`
   font-weight: bold;
   cursor: pointer;
   transition: 0.2s;
-
-  &:hover {
-    background: #45b393;
-  }
+  &:hover { background: #45b393; }
 `;
 
-export default function ChatRoom({ username, room }) {
+export default function ChatRoom({ username, room: initialRoom }) {
+  const [currentRoom, setCurrentRoom] = useState(initialRoom || 'General');
+  const [channels, setChannels] = useState([]);
   const [messages, setMessages] = useState([]);
   const [inputValue, setInputValue] = useState('');
+  const [onlineUsers, setOnlineUsers] = useState(1);
   const messagesEndRef = useRef(null);
 
   useEffect(() => {
-    // Listen for incoming messages
-    socket.on('new_message', (message) => {
-      setMessages((prev) => [...prev, message]);
+    // Initial join
+    joinRoom(currentRoom);
+
+    socket.on('channel_list', (list) => {
+      setChannels(list);
     });
 
-    socket.on('message_pending', (data) => {
-      // Optimistic update or just wait?
-      // For now, we'll handle the 'pending' state via the list if we added it optimistically.
-      // But here we receive the server ID.
-      // Let's rely on the 'new_message' broadcast for simplicity in this MVP, 
-      // or we can add it locally first.
-      // If we add locally, we need to match IDs.
+    socket.on('room_data', ({ room, users }) => {
+      if (room === currentRoom) {
+        setOnlineUsers(users);
+      }
+    });
+
+    socket.on('new_message', (message) => {
+      if (message.roomId === currentRoom) {
+        setMessages((prev) => [...prev, message]);
+      }
     });
 
     socket.on('message_blocked', (data) => {
-       // Find the pending message and mark it blocked
-       // For MVP, we might just show an alert or a system message
        alert(`Message blocked: ${data.reason}`);
     });
 
     return () => {
+      socket.off('channel_list');
+      socket.off('room_data');
       socket.off('new_message');
-      socket.off('message_pending');
       socket.off('message_blocked');
     };
-  }, []);
+  }, [currentRoom]); // Re-run when room changes
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  const joinRoom = (roomName) => {
+    setMessages([]); // Clear messages on room switch
+    socket.emit('join_room', { roomId: roomName, username });
+  };
+
+  const handleSwitchChannel = (channel) => {
+    if (channel !== currentRoom) {
+      setCurrentRoom(channel);
+      // joinRoom is called via useEffect dependency
+    }
+  };
+
+  const handleCreateChannel = () => {
+    const name = prompt("Enter new channel name:");
+    if (name) {
+      socket.emit('create_channel', name);
+    }
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    window.location.reload(); // Simple reload to reset state
+  };
 
   const sendMessage = (e) => {
     e.preventDefault();
@@ -125,57 +209,66 @@ export default function ChatRoom({ username, room }) {
 
     const tempId = Date.now().toString();
     const messageData = {
-      roomId: room,
+      roomId: currentRoom,
       text: inputValue,
       senderId: username,
       clientTempId: tempId
     };
-
-    // Optimistic UI: Add to list immediately as pending
-    // We need to handle this carefully to avoid duplicates when server broadcasts back
-    // For this MVP, let's just emit and wait for server broadcast to keep it simple and consistent.
-    // Or we can add it with a 'pending' status locally.
-    
-    // Let's add it locally
-    /*
-    setMessages(prev => [...prev, {
-      ...messageData,
-      status: 'pending'
-    }]);
-    */
-    // Actually, the server broadcasts 'new_message' even to the sender in our server.js logic.
-    // So we don't need to add it locally if the server is fast enough.
-    // But for 'pending' feedback, we might want it.
-    // Let's stick to server broadcast for now to avoid duplicate logic.
 
     socket.emit('send_message', messageData);
     setInputValue('');
   };
 
   return (
-    <ChatContainer>
-      <Header>
-        <RoomInfo>#{room}</RoomInfo>
-        <div>Logged in as <b>{username}</b></div>
-      </Header>
-      <MessagesArea>
-        {messages.map((msg, index) => (
-          <MessageBubble 
-            key={msg._id || index} 
-            message={msg} 
-            isOwn={msg.senderId === username} 
+    <Layout>
+      <Sidebar>
+        <SidebarHeader>
+          <h3>Channels</h3>
+        </SidebarHeader>
+        <ChannelList>
+          {channels.map(channel => (
+            <ChannelItem 
+              key={channel} 
+              $active={channel === currentRoom}
+              onClick={() => handleSwitchChannel(channel)}
+            >
+              # {channel}
+            </ChannelItem>
+          ))}
+        </ChannelList>
+        <CreateChannelBtn onClick={handleCreateChannel}>+ New Channel</CreateChannelBtn>
+      </Sidebar>
+
+      <ChatArea>
+        <Header>
+          <RoomInfo>
+            <h3>#{currentRoom}</h3>
+            <span>{onlineUsers} Online</span>
+          </RoomInfo>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <span>{username}</span>
+            <LogoutBtn onClick={handleLogout}>Logout</LogoutBtn>
+          </div>
+        </Header>
+        <MessagesArea>
+          {messages.map((msg, index) => (
+            <MessageBubble 
+              key={msg._id || index} 
+              message={msg} 
+              isOwn={msg.senderId === username} 
+            />
+          ))}
+          <div ref={messagesEndRef} />
+        </MessagesArea>
+        <InputArea onSubmit={sendMessage}>
+          <MessageInput 
+            value={inputValue} 
+            onChange={(e) => setInputValue(e.target.value)} 
+            placeholder={`Message #${currentRoom}`} 
           />
-        ))}
-        <div ref={messagesEndRef} />
-      </MessagesArea>
-      <InputArea onSubmit={sendMessage}>
-        <MessageInput 
-          value={inputValue} 
-          onChange={(e) => setInputValue(e.target.value)} 
-          placeholder="Type a message..." 
-        />
-        <SendButton type="submit">Send</SendButton>
-      </InputArea>
-    </ChatContainer>
+          <SendButton type="submit">Send</SendButton>
+        </InputArea>
+      </ChatArea>
+    </Layout>
   );
 }
