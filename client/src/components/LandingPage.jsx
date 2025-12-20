@@ -221,7 +221,7 @@ export default function LandingPage() {
   return (
     <Container>
       <Nav>
-        <Logo onClick={() => navigate('/')}>SafeChat</Logo>
+        <Logo onClick={() => navigate('/')}>Safe Chat</Logo>
         <NavBtn onClick={() => navigate('/login')}>Login</NavBtn>
       </Nav>
 
