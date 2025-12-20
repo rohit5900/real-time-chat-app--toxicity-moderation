@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, useNavigate, Navigate } from 'react-router-dom';
 import styled, { ThemeProvider, createGlobalStyle } from 'styled-components';
 import Login from './components/Login';
+import LandingPage from './components/LandingPage';
 import ChatRoom from './components/ChatRoom';
 import { socket } from './socket';
 import { ThemeContext, useTheme, lightTheme, darkTheme } from './ThemeContext';
@@ -61,7 +62,6 @@ function AppContent() {
     setRoom(roomName);
     socket.auth = { username: user };
     socket.connect();
-    socket.emit('join_room', roomName);
     navigate('/chat');
   };
 
@@ -80,8 +80,9 @@ function AppContent() {
         </button>
       </div>
       <Routes>
+        <Route path="/" element={<LandingPage />} />
         <Route 
-          path="/" 
+          path="/login" 
           element={<Login onJoin={handleLogin} />} 
         />
         <Route 

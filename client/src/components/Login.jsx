@@ -116,7 +116,7 @@ export default function Login({ onJoin }) {
     e.preventDefault();
     setError('');
     const endpoint = isLogin ? '/api/auth/login' : '/api/auth/register';
-    const url = `http://localhost:3000${endpoint}`; // Should use env var
+    const url = `${import.meta.env.VITE_SOCKET_URL}${endpoint}`;
 
     try {
       const res = await axios.post(url, formData);
